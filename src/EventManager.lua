@@ -1,14 +1,47 @@
+--- EventManager class for publish-subscribe event handling.
+-- Allows objects to subscribe to events and receive notifications when
+-- those events are fired. Used internally by the Engine for component
+-- change events, but can also be used for custom game events.
+--
+-- @classmod EventManager
+-- @usage
+-- local eventManager = EventManager()
+--
+-- -- Create a listener object
+-- local listener = lovetoys.class("MyListener")()
+-- function listener:onPlayerDied(event)
+--     print("Player died: " .. event.playerName)
+-- end
+--
+-- -- Subscribe to event
+-- eventManager:addListener("PlayerDied", listener, listener.onPlayerDied)
+--
+-- -- Fire event
+-- local event = PlayerDiedEvent("Hero")
+-- eventManager:fireEvent(event)
+
 -- Getting folder that contains our src
 local folderOfThisFile = (...):match("(.-)[^%/%.]+$")
 
 local lovetoys = require(folderOfThisFile .. 'namespace')
 local EventManager = lovetoys.class("EventManager")
 
+--- Creates a new EventManager instance.
 function EventManager:initialize()
+    --- Table of event listeners, keyed by event name.
+    -- Each entry is an array of {listener, function} pairs.
+    -- @field eventListeners
     self.eventListeners = {}
 end
 
--- Adding an eventlistener to a specific event
+--- Adds a listener for a specific event type.
+-- The listener object must have a `class.name` field for identification.
+-- Each class can only have one listener per event type.
+-- @tparam string eventName The name of the event to listen for (typically the event class name)
+-- @tparam table listener The listener object (must have listener.class.name)
+-- @tparam function listenerFunction The function to call when the event fires
+-- @usage
+-- eventManager:addListener("ComponentAdded", mySystem, mySystem.onComponentAdded)
 function EventManager:addListener(eventName, listener, listenerFunction)
     -- If there's no list for this event, we create a new one
     if not self.eventListeners[eventName] then
@@ -39,7 +72,11 @@ function EventManager:addListener(eventName, listener, listenerFunction)
     end
 end
 
--- Removing an eventlistener from an event
+--- Removes a listener from an event.
+-- @tparam string eventName The name of the event
+-- @tparam string listener The class name of the listener to remove
+-- @usage
+-- eventManager:removeListener("ComponentAdded", "MovementSystem")
 function EventManager:removeListener(eventName, listener)
     if self.eventListeners[eventName] then
         for key, registeredListener in pairs(self.eventListeners[eventName]) do
@@ -53,7 +90,12 @@ function EventManager:removeListener(eventName, listener)
     lovetoys.debug(string.format("Eventmanager: Event %s listener should be removed from is not existing ", eventName))
 end
 
--- Firing an event. All registered listener will react to this event
+--- Fires an event to all registered listeners.
+-- All listeners subscribed to this event type will have their callback invoked.
+-- @tparam table event The event instance to fire (must have event.class.name)
+-- @usage
+-- local event = ComponentAdded(entity, "Position")
+-- eventManager:fireEvent(event)
 function EventManager:fireEvent(event)
     local name = event.class.name
     if self.eventListeners[name] then

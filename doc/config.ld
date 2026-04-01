@@ -1,9 +1,11 @@
 project     = "Lovetoys"
 title       = "Lovetoys Documentation"
-description = "ECS module for Love2d"
+description = "Entity Component System module for Love2d"
 sort        = true
 dir         = "."
+format      = "markdown"
 file        = {
 	"../init.lua",
+	"../src",
 }
 

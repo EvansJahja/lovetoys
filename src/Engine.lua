@@ -1,19 +1,57 @@
+--- Engine class that manages all entities and systems in the ECS.
+-- The Engine is the central coordinator that connects entities with systems.
+-- It maintains entity lists, handles component events, and orchestrates
+-- the update/draw lifecycle.
+--
+-- @classmod Engine
+-- @usage
+-- local engine = Engine()
+-- engine:addSystem(MovementSystem())
+-- engine:addSystem(RenderSystem(), "draw")
+-- engine:addEntity(player)
+--
+-- function love.update(dt)
+--     engine:update(dt)
+-- end
+--
+-- function love.draw()
+--     engine:draw()
+-- end
+
 -- Getting folder that contains our src
 local folderOfThisFile = (...):match("(.-)[^%/%.]+$")
 
 local lovetoys = require(folderOfThisFile .. 'namespace')
 local Engine = lovetoys.class("Engine")
 
+--- Creates a new Engine instance.
+-- Initializes all internal data structures and sets up event listeners
+-- for component changes.
 function Engine:initialize()
+    --- Table of all entities, indexed by entity id.
+    -- @field entities
     self.entities = {}
-    -- Root Entity of the entity tree
+    --- The root entity of the entity hierarchy tree.
+    -- @field rootEntity
     self.rootEntity = lovetoys.Entity()
+    --- Maps component names to systems requiring that component as first requirement.
+    -- @field[opt] singleRequirements
     self.singleRequirements = {}
+    --- Maps component names to all systems requiring that component.
+    -- @field[opt] allRequirements
     self.allRequirements = {}
+    --- Maps component names to lists of entities having that component.
+    -- @field entityLists
     self.entityLists = {}
+    --- The EventManager instance for this engine.
+    -- @field eventManager
     self.eventManager = lovetoys.EventManager()
 
+    --- Table containing system lists by type ("update" and "draw").
+    -- @field systems
     self.systems = {}
+    --- Registry of all added systems by name.
+    -- @field systemRegistry
     self.systemRegistry = {}
     self.systems["update"] = {}
     self.systems["draw"] = {}
@@ -22,6 +60,14 @@ function Engine:initialize()
     self.eventManager:addListener("ComponentAdded", self, self.componentAdded)
 end
 
+--- Adds an entity to the engine.
+-- Assigns an ID to the entity, sets up its event manager, and checks
+-- which systems the entity should be added to based on its components.
+-- @tparam Entity entity The entity to add
+-- @usage
+-- local entity = Entity()
+-- entity:add(Position(0, 0))
+-- engine:addEntity(entity)
 function Engine:addEntity(entity)
     -- Setting engine eventManager as eventManager for entity
     entity.eventManager = self.eventManager
@@ -51,6 +97,21 @@ function Engine:addEntity(entity)
     end
 end
 
+--- Removes an entity from the engine.
+-- Removes the entity from all systems and entity lists. Can optionally
+-- remove all children recursively or reassign them to a new parent.
+-- @tparam Entity entity The entity to remove
+-- @tparam[opt=false] boolean removeChildren If true, removes all children recursively
+-- @tparam[opt] Entity newParent If provided and removeChildren is false, children are reassigned to this parent
+-- @usage
+-- -- Remove entity only, children go to rootEntity
+-- engine:removeEntity(entity)
+--
+-- -- Remove entity and all children
+-- engine:removeEntity(entity, true)
+--
+-- -- Remove entity, reassign children to another parent
+-- engine:removeEntity(entity, false, otherEntity)
 function Engine:removeEntity(entity, removeChildren, newParent)
     if self.entities[entity.id] then
         -- Removing the Entity from all Systems and engine
@@ -106,6 +167,16 @@ function Engine:removeEntity(entity, removeChildren, newParent)
     end
 end
 
+--- Adds a system to the engine.
+-- Systems with an `update` method are added to the update list.
+-- Systems with a `draw` method are added to the draw list.
+-- If a system has both, you must specify which type to add it as.
+-- @tparam System system The system instance to add
+-- @tparam[opt] string type Either "update" or "draw". Required if system has both methods.
+-- @treturn System The added system
+-- @usage
+-- engine:addSystem(MovementSystem())
+-- engine:addSystem(RenderSystem(), "draw")
 function Engine:addSystem(system, type)
     local name = system.class.name
 
@@ -165,6 +236,11 @@ function Engine:addSystem(system, type)
     return system
 end
 
+--- Registers a system's component requirements internally.
+-- Called automatically by addSystem. Sets up the singleRequirements and
+-- allRequirements mappings for efficient entity-system matching.
+-- @tparam System system The system to register
+-- @local
 function Engine:registerSystem(system)
     local name = system.class.name
     self.systemRegistry[name] = system
@@ -209,6 +285,13 @@ function Engine:registerSystem(system)
     end
 end
 
+--- Stops (deactivates) a system by name.
+-- Stopped systems will not have their update or draw methods called.
+-- @tparam string name The name of the system to stop
+-- @see Engine:startSystem
+-- @see Engine:toggleSystem
+-- @usage
+-- engine:stopSystem("MovementSystem")
 function Engine:stopSystem(name)
     if self.systemRegistry[name] then
         self.systemRegistry[name].active = false
@@ -217,6 +300,12 @@ function Engine:stopSystem(name)
     end
 end
 
+--- Starts (activates) a system by name.
+-- @tparam string name The name of the system to start
+-- @see Engine:stopSystem
+-- @see Engine:toggleSystem
+-- @usage
+-- engine:startSystem("MovementSystem")
 function Engine:startSystem(name)
     if self.systemRegistry[name] then
         self.systemRegistry[name].active = true
@@ -225,6 +314,12 @@ function Engine:startSystem(name)
     end
 end
 
+--- Toggles a system's active state.
+-- @tparam string name The name of the system to toggle
+-- @see Engine:stopSystem
+-- @see Engine:startSystem
+-- @usage
+-- engine:toggleSystem("MovementSystem")
 function Engine:toggleSystem(name)
     if self.systemRegistry[name] then
         self.systemRegistry[name].active = not self.systemRegistry[name].active
@@ -233,6 +328,13 @@ function Engine:toggleSystem(name)
     end
 end
 
+--- Calls update on all active update systems.
+-- Should be called from love.update or your game loop.
+-- @tparam ... ... Arguments to pass to each system's update method (typically dt)
+-- @usage
+-- function love.update(dt)
+--     engine:update(dt)
+-- end
 function Engine:update(...)
     for _, system in ipairs(self.systems["update"]) do
         if system.active then
@@ -241,6 +343,12 @@ function Engine:update(...)
     end
 end
 
+--- Calls draw on all active draw systems.
+-- Should be called from love.draw or your render loop.
+-- @usage
+-- function love.draw()
+--     engine:draw()
+-- end
 function Engine:draw()
     for _, system in ipairs(self.systems["draw"]) do
         if system.active then
@@ -249,6 +357,11 @@ function Engine:draw()
     end
 end
 
+--- Handles ComponentRemoved events.
+-- Called automatically when a component is removed from an entity.
+-- Updates entity lists and notifies affected systems.
+-- @tparam ComponentRemoved event The component removed event
+-- @local
 function Engine:componentRemoved(event)
     -- In case a single component gets removed from an entity, we inform
     -- all systems that this entity lost this specific component.
@@ -266,6 +379,11 @@ function Engine:componentRemoved(event)
     end
 end
 
+--- Handles ComponentAdded events.
+-- Called automatically when a component is added to an entity.
+-- Updates entity lists and checks if entity now matches any systems.
+-- @tparam ComponentAdded event The component added event
+-- @local
 function Engine:componentAdded(event)
     local entity = event.entity
     local component = event.component
@@ -282,19 +400,35 @@ function Engine:componentAdded(event)
     end
 end
 
+--- Gets the root entity of the entity hierarchy.
+-- The root entity is the default parent for entities without an explicit parent.
+-- @treturn Entity The root entity
 function Engine:getRootEntity()
     if self.rootEntity ~= nil then
         return self.rootEntity
     end
 end
 
--- Returns an Entitylist for a specific component. If the Entitylist doesn't exist yet it'll be created and returned.
+--- Gets all entities that have a specific component.
+-- Creates the entity list if it doesn't exist yet.
+-- @tparam string component The name of the component
+-- @treturn table Table of entities indexed by entity id
+-- @usage
+-- local positionEntities = engine:getEntitiesWithComponent("Position")
+-- for id, entity in pairs(positionEntities) do
+--     print(entity:get("Position").x)
+-- end
 function Engine:getEntitiesWithComponent(component)
     if not self.entityLists[component] then self.entityLists[component] = {} end
     return self.entityLists[component]
 end
 
--- Returns a count of existing Entities with a given component
+--- Counts the number of entities with a specific component.
+-- @tparam string component The name of the component
+-- @treturn number The count of entities with the component
+-- @usage
+-- local count = engine:getEntityCount("Position")
+-- print("Entities with position: " .. count)
 function Engine:getEntityCount(component)
     local count = 0
     if self.entityLists[component] then
@@ -305,6 +439,12 @@ function Engine:getEntityCount(component)
     return count
 end
 
+--- Checks if an entity meets a system's component requirements.
+-- If requirements are met, adds the entity to the system.
+-- Handles both simple requirements and grouped requirements.
+-- @tparam Entity entity The entity to check
+-- @tparam System system The system to check against
+-- @local
 function Engine:checkRequirements(entity, system) -- luacheck: ignore self
     local meetsRequirements = true
     local foundGroup = nil
